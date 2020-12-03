@@ -8,14 +8,13 @@ from select import select
 
 class Endpoint:
     """
-    Représente le serveur qui écoute et
-    ouvre les connexions
+    Define a server which listen to new clients
+    and open connections
     """
     
     def __init__(self, host, port, wait_conn_max=5):
         """
-        Constructeur, crée et démarre le
-        serveur
+        Constructor, create and start the server
         """
         
         self.__sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -26,36 +25,33 @@ class Endpoint:
         
     def accept(self, timeout=None):
         """
-        Attend qu'un ou plusieurs clients
-        aient demandé à se connecter et
-        ouvre et renvoie la liste des
-        connexions correspondantes
+        Waits for one or several clients
+        requesting to connect, open and return
+        a list of new connections.
         
-        timeout -- le temps en secondes
-        d'attente avant de rendre la main
-        sans créer de conexion si aucun
-        client ne s'est présenté. Si None
-        ou non défini, attend
-        indéfiniment un client, si vaut 0
-        n'attend pas et retourne
-        directement si pas de clients
+        timeout -- the time in sec of waiting
+        before return without creating any
+        connection because no client came out.
+        If None or undefined, waits forever at
+        least one client, if equals 0, does not
+        wait and return directly if no client
         """
         
-        # Synchronisation clients/serveur
+        #Client/server synchronization
         server_socks, _, _ = select([self.__sock], [], [], timeout)
         
         while server_socks:
         
-            # Connecte le(s) client(s)
-            for ss in server_socks:
-                cs, (host, port) = ss.accept()
-                yield Connection(cs, host, port)
+            # Connects client(s)
+            for s_s in server_socks:
+                c_s, (host, port) = s_s.accept()
+                yield Connection(c_s, host, port)
             
             server_socks, _, _ = select([self.__sock], [], [], timeout)
     
     def close(self):
         """
-        Ferme proprement le serveur
+        Closes properly the server
         """
         
         self.__sock.shutdown(2)
@@ -64,15 +60,15 @@ class Endpoint:
     
 class Connection:
     """
-    Représente une connexion à un client
-    qui écoute les messages du client
-    et peut lui envoyer des messages
+    Defines a connection to a client wich listen
+    to messages coming from the client and which
+    can send it messages too
     """
     
     def __init__(self, sock, host, port):
         """
-        Constructeur qui définit les
-        attributs de la connection
+        Constructor which define attributes of
+        connection
         """
         
         self.__sock = sock
@@ -83,6 +79,7 @@ class Connection:
         
     def receive(self):
         """
+        Waits for a message from the 
         Attend un message du client pour
         le renvoyer
         
@@ -182,7 +179,7 @@ if __name__ == "__main__":
        
     try:
         server.close()
-    except Error as error:    
+    except socket.error as error:
         print(f"Erreur : fermeture de la connexion :\n{error}")
     else:
         print("Ok : fermeture de la connexion")
@@ -191,14 +188,19 @@ if __name__ == "__main__":
     from threading import Thread
     
     def client_run(is_alive):
-        client = socket.create_connection(('localhost', 12480))
-        client.send(b"Bonjour du client !!\3")
+        """
+        Routine de fonctionnement du client en
+        parallèle
+        """
+        clt = socket.create_connection(('localhost', 12480))
+        clt.send(b"Bonjour du client !!\3")
         
         while is_alive():
             time.sleep(.2)
-
+    
+    #pylint:disable=C0103
     client_alive = True
-    client_thread = Thread(target=client_run, args=(lambda : client_alive, ))
+    client_thread = Thread(target=client_run, args=(lambda: client_alive, ))
     client_thread.start()
     print("client run")
     time.sleep(.5)
@@ -218,21 +220,21 @@ if __name__ == "__main__":
     servers, _, _ = select([server], [], [], 0)
     client_msg = servers[0].receive()
     
-    if client_msg != None:
+    if client_msg is not None:
         print(f"Erreur : le message reçu par le serveur est :\n{client_msg}")
     else:
         print("Ok : client -> serveur")
     
     try:
-        server.close()    
-    except Error as error:    
+        server.close()
+    except socket.error as error:
         print(f"Erreur : fermeture de la connexion :\n{error}")
-    else:    
+    else:
         print("Ok : fermeture de la connexion")
     
     try:
         endpoint.close()
-    except Error as error:
+    except socket.error as error:
         print(f"Erreur : fermeture de l'endpoint :\n{error}")
     else:
         print("Ok : fermeture de l'endpoint")

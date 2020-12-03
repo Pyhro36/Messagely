@@ -1,4 +1,3 @@
-#pylint:disable=C0301
 """
 Definit la boucle principale du serveur
 """
@@ -36,7 +35,7 @@ class Service:
         # à chaque tour
         self.__connections += self.__endpoint.accept(constants.ACCEPT_TIMEOUT)
      
-    def select_conn(self):
+    def turn_messages(self):
         """
         Attends ou recupère les éventuels
         connexion prêtes à recevoir ou
@@ -59,13 +58,13 @@ class Service:
         ready_rconns, ready_wconns, _ = select(self.__connections, self.__connections, [], constants.RECV_SEND_TIMEOUT)
             
         for conn in ready_rconns:
-                
+
             # Reçoit le message complet du
             # client
             msg = conn.receive()
-            
+
             if msg:
-                self.__waits += WaitingMessage(msg, self.__connections)
+                self.__waits.append(WaitingMessage(msg, self.__connections))
                 
             else:
                 conn.close()
@@ -109,7 +108,7 @@ class Service:
                 self.__connections.remove(conn)
                 
             if wait.is_done():
-                done_waits += wait
+                done_waits.append(wait)
             
         # Retire les messages envoyés à
         # tous les clients
@@ -183,21 +182,41 @@ if __name__ == "__main__":
     # Et enfin le serveur est fermé
 
     import socket
+    import time
     from threading import Thread
 
     service = Service('', 12480)
-    client1 = socket.create_connection(('localhost', 12480))
-    
-    client2_alive = True
-    def run_client2(client2):
+
+    def run_client1():
         """
-        Routine d'éxecution du deuxième client
+        Routine d'exécution du premier client
         """
         
-        client2 = socket.create_connection(('localhost', 12480))
+        client = socket.create_connection(('localhost', 12480))
+        client.send(b"Msg du client 1 !\3")
+        print(f"2 -> 1 : {client.recv(1024)}")
         
-    client2_thread = Thread(target=run_client2, args=(lambda : client2_alive, ))
+    def run_client2():
+        """
+        Routine d'exécution du deuxième 
+    client1_thread = Thread(target=run_client1)
+    client2_thread = Thread(target=run_client2)
+    client1_thread.start()
     client2_thread.start()
-        
     service.accept_new_conn()
+    
+    
+    service.turn_messages()
+    print(f"1 -> 1 : {client1.recv(1024)}")
+    service.turn_messages()
+    print(f"2 -> 1 : {client1.recv(1024)}")
+    
+    client1.close()
+
+    service.accept_new_conn()
+    client2_alive = False
+    client2_thread.join()
+    
+    
+    
     
