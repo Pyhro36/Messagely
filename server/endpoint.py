@@ -1,5 +1,7 @@
 """
-Module de serveur de l'application
+Low-level endpoint of the application, which
+define the server which the client can connect to
+and communicate with
 """
 
 import socket
@@ -14,7 +16,8 @@ class Endpoint:
     
     def __init__(self, host, port, wait_conn_max=5):
         """
-        Constructor, create and start the server
+        Constructor, creates and starts the
+        server
         """
         
         self.__sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -25,7 +28,7 @@ class Endpoint:
         
     def accept(self, timeout=None):
         """
-        Waits for one or several clients
+        Wait for one or several clients
         requesting to connect, open and return
         a list of new connections.
         
@@ -42,16 +45,16 @@ class Endpoint:
         
         while server_socks:
         
-            # Connects client(s)
+            # Connect client(s)
             for s_s in server_socks:
                 c_s, (host, port) = s_s.accept()
                 yield Connection(c_s, host, port)
             
-            server_socks, _, _ = select([self.__sock], [], [], timeout)
+            server_socks, _, _ = select([self.__sock], [], [], 0)
     
     def close(self):
         """
-        Closes properly the server
+        Close properly the server
         """
         
         self.__sock.shutdown(2)
@@ -60,14 +63,14 @@ class Endpoint:
     
 class Connection:
     """
-    Defines a connection to a client wich listen
+    Define a connection to a client wich listen
     to messages coming from the client and which
     can send it messages too
     """
     
     def __init__(self, sock, host, port):
         """
-        Constructor which define attributes of
+        Constructor which defines attributes of
         connection
         """
         
@@ -79,16 +82,14 @@ class Connection:
         
     def receive(self):
         """
-        Waits for a message from the 
-        Attend un message du client pour
-        le renvoyer
+        Wait for a message from the client in
+        order to return it
         
-        L'appel est bloquant jusqu'à la
-        réception d'un message
-        
-        Renvoie None si la connexion a
-        été interrompue
-        
+        The call is blocking until receiving
+        a message
+
+        Return None if the connection is
+        interrupted
         """
         
         msg = ""
@@ -96,31 +97,27 @@ class Connection:
         while not msg.endswith("\3"):
             recept = self.__sock.recv(1024)
             
-            # Si la connexion a été
-            # interrompue
+            # If the connection is interrupted
             if recept == b"":
                 return None
             
             msg += recept.decode()
         
-        # On retire le caractère de
-        # contrôle
+        # Remove the control character
         return msg[:-1]
         
     def send(self, msg):
         """
-        Envoie un message au client
+        Send a message to the client
         
-        msg --- le message a envoyer
-        (string)
+        msg (str) --- the message to send
         
-        Renvoie True si le message a bien
-        été envoyé, False si la connexion
-        a été interrompue
+        Return True if the message has been
+        correctly send, False if the connection
+        is interrupted
         """
         
-        # Ajout du caractère de fin de
-        # message
+        # Add end of message character
         msg += "\3"
         sent = self.__sock.send(msg.encode())
         
@@ -128,83 +125,32 @@ class Connection:
         
     def fileno(self):
         """
-        Renvoie un numéro de fichier
-        permettant d'identifier la
-        connexion avec la fonction
-        select.select(...) comme ayant un
-        message à recevoir
+        Return un fileno which in order the
+        function select.select(...)
+        to identifies the connection when it can
+        send a message or when she has a message
+        to receive
         """
         
         return self.__sock.fileno()
      
     def close(self):
         """
-        Ferme proprement la connexion avec
-        le client
+        Close properly the connection with the
+        client
         """
         self.__sock.shutdown(2)
         self.__sock.close()
         
 
 if __name__ == "__main__":
-    # Fait un test en fabriquant un
-    # serveur naîf qui accepte une
-    # connexion,envoie un message et en
-    # reçois un, puis ferme la connexion
-    
-    import time
-    
-    endpoint = Endpoint('localhost', 12480)
-    client = socket.create_connection(('localhost', 12480))
-    server = list(endpoint.accept())[0]
-    
-    client.send(b"Bonjour du client !!\3")
-    time.sleep(1)
-    servers, _, _ = select([server], [], [], 0)
-    client_msg = servers[0].receive()
-    
-    if client_msg != "Bonjour du client !!":
-        print(f"Erreur : le message reçu par le serveur est :\n{client_msg}")
-    else:
-        print("Ok : client -> serveur")
-    
-    _, servers, _ = select([], [server], [])
-    servers[0].send("Bonjour du client !")
-    server_msg = client.recv(1024)
-    
-    if server_msg != b"Bonjour du client !\3":
-        print(f"Erreur : le message reçu par le client est :\n{server_msg}")
-    else:
-        print("Ok : serveur -> client")
-       
-    try:
-        server.close()
-    except socket.error as error:
-        print(f"Erreur : fermeture de la connexion :\n{error}")
-    else:
-        print("Ok : fermeture de la connexion")
+    # Do a test by making a naive server wich
+    # accepts a connection, sends a message and
+    # receives another, then closes the
+    # connection
         
-    # Test de kill du socket en cours
-    from threading import Thread
+    # Test of killing client socket while active
     
-    def client_run(is_alive):
-        """
-        Routine de fonctionnement du client en
-        parallèle
-        """
-        clt = socket.create_connection(('localhost', 12480))
-        clt.send(b"Bonjour du client !!\3")
-        
-        while is_alive():
-            time.sleep(.2)
-    
-    #pylint:disable=C0103
-    client_alive = True
-    client_thread = Thread(target=client_run, args=(lambda: client_alive, ))
-    client_thread.start()
-    print("client run")
-    time.sleep(.5)
-    server = list(endpoint.accept())[0]
     print("client accept")
     servers, _, _ = select([server], [], [], 0)
     client_msg = servers[0].receive()
@@ -216,6 +162,7 @@ if __name__ == "__main__":
     
     client_alive = False
     client_thread.join()
+    print(server.send("Un message irrecevable"))
     
     servers, _, _ = select([server], [], [], 0)
     client_msg = servers[0].receive()
@@ -238,7 +185,5 @@ if __name__ == "__main__":
         print(f"Erreur : fermeture de l'endpoint :\n{error}")
     else:
         print("Ok : fermeture de l'endpoint")
-    
-    
 
     

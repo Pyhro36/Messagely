@@ -1,5 +1,5 @@
 """
-Definit la boucle principale du serveur
+Define the components of the service of message redistribution
 """
 
 from select import select
@@ -9,82 +9,71 @@ from endpoint import Endpoint
     
 class Service:
     """
-    Definit l'hébergement de la boucle
-    principale su serveur
+    Define'' the service of message redistribution
     """
     
     def __init__(self, host, port):
         """
-        Définit les services principaux
-        de la boucle
+        Define the main components useful for the
+        loop
         """
         
         self.__endpoint = Endpoint(host, port)
         self.__connections = []
-        self.__waits = []
+        self.__pendings = []
     
     def accept_new_conn(self):
         """
-        Vérifie si des nouvelles demandes
-        de connexion on été faites et les
-        ajoute
+        Check if new connection requests have
+        been made and add these
         """
-           
-        # Regarde si de nouveaux
-        # clients se sont connectés
-        # à chaque tour
+
         self.__connections += self.__endpoint.accept(constants.ACCEPT_TIMEOUT)
      
     def turn_messages(self):
         """
+        Wait for or gather the connections which
+        are ready to send or receive messages
         Attends ou recupère les éventuels
-        connexion prêtes à recevoir ou
-        envoyer des messages
         
-        Le cas échéant, ferme et supprime
-        automatiquement les connexions
-        terminées
-         
-        Renvoie un tuple des connexions
-        prêtes à recevoir et un tuple des
-        connexions prêtes à envoyer
-         
-        timeout -- le temps d'attente
-        maximal, si Nonr ou non défini, la
-        méthode attends jusqu'à trouver
-        un
+        If there are ones, close and delete upon
+        detection terminated connections
+        
+        Save each received message to send it to
+        all clients, send each message to the
+        ready to receive clients that have not
+        already received the message and delete
+        messages sent to all clients.
         """
          
         ready_rconns, ready_wconns, _ = select(self.__connections, self.__connections, [], constants.RECV_SEND_TIMEOUT)
             
         for conn in ready_rconns:
 
-            # Reçoit le message complet du
-            # client
+            # Receive the complete client message
             msg = conn.receive()
 
             if msg:
-                self.__waits.append(WaitingMessage(msg, self.__connections))
+                self.__pendings.append(PendingMessage(msg, self.__connections))
                 
             else:
                 conn.close()
                 self.__connections.remove(conn)
         
-        self.__send_waits(ready_wconns)
+        self.__send_pendings(ready_wconns)
                 
     def close(self):
         """
-        Ferme le serveur et toutes les
-        connexions encore ouvertes
-        proprement
+        Close properly the server and all the
+        connection still open
         
-        Envoie les derniers messages encore en
-        cours mais n'en rençois plus
+        Send the last saved messages but don't
+        receive anymore
         """
         
-        while self.__waits:
+        while self.__pendings:
             _, ready_wconns, _ = select([], self.__connections, [], constants.RECV_SEND_TIMEOUT)
-            self.__send_waits(ready_wconns)
+            self.__send_pendings(ready_wconns)
             
         for conn in self.__connections:
             conn.close()
@@ -92,47 +81,48 @@ class Service:
         self.__endpoint.close()
         
         
-    def __send_waits(self, conns):
+    def __send_pendings(self, conns):
+        """
+        Send pending messages to the clients
+        that can receive them
         
-        # Envoie les messages en attente
-        # aux clients qui peuvent en
-        # recevoir
-        done_waits = []
+        conns (iterable[Connection])--- the
+        connections to the clients that can
+        receive a message
+        """
+        done_pendings = []
         
-        for wait in self.__waits:
+        for pending in self.__pendings:
             
-            # Retire les connexions qui n'ont pas
-            # pu recevoir le message
-            for conn in wait.send(conns):
+            # Remove connexions that couldn't
+            # send the message
+            for conn in pending.send(conns):
                 conn.close()
                 self.__connections.remove(conn)
                 
-            if wait.is_done():
-                done_waits.append(wait)
+            if pending.is_done():
+                done_pendings.append(pending)
             
-        # Retire les messages envoyés à
-        # tous les clients
-        for wait in done_waits:
-             
-            self.__waits.remove(wait)
+        # Remove the messages sent to all clients
+        for pending in done_pendings:
+            self.__pendings.remove(pending)
         
 
-class WaitingMessage:
+class PendingMessage:
     """
-    Représente un message en attente
-    d'envoi à tous les clients et permet
-    de suivre à quels clients il faut
-    encore l'envoyer
+    Define a message pending to be sent to all
+    the clients and allow to follow to which
+    clients the message is not sent yet
     """
     
     def __init__(self, msg, connections):
         """
-        Initialise l'attente
+        Initialize the waiting
         
-        msg -- le message à envoyer aux
+        msg (str) -- the message to send to the
         clients
-        connections -- la séquence des
-        connections aux clients
+        connections (iterable[Connection]) -- all
+        the connections to the client
         """
         
         self.__msg = msg
@@ -140,18 +130,14 @@ class WaitingMessage:
         
     def send(self, connections):
         """
-        Envoie le message aux connexions
-        dans la séquence de connexions
-        prêtes à envoyer le message au
-        client passée en paramètre qui
-        n'ont pas encore envoyé le message
-        et les retire de liste des
-        connexions qui doivent encore
-        envoyer le message.
+        Send the message by the connections given
+        in parameters, that are ready to send a
+        message and in the connections that don't
+        have sent the messsage yet
         
-        Renvoie la liste des connexions
-        à qui le message n'a pas pu être
-        envoyé
+        Return the connections by which the
+        message could not be send, because
+        interrupted
         """
         
         for conn in connections:
@@ -165,21 +151,21 @@ class WaitingMessage:
     
     def is_done(self):
         """
-        Renvoie True si toutes les
-        connexions ont reçu le message,
-        False sinon.
+        Return True if all the active connections
+        have sent the message, False otherwise.
         """
         
         return not self.__connections
         
 if __name__ == "__main__":
-    # Initie un serveur et deux clients qui
-    # s'envoient mutuellement un message
+    # Create a server and two client in separated
+    # threads that send mutually a message by the
+    # server
     #
-    # Puis un client se ferme brusquement
-    # pendant que l'autre envoie un message
+    # Then one client interrupt suddenly while
+    # the other send a message
     #
-    # Et enfin le serveur est fermé
+    # Eventually, the server is closed
 
     import socket
     import time
@@ -189,16 +175,26 @@ if __name__ == "__main__":
 
     def run_client1():
         """
-        Routine d'exécution du premier client
+        Execution routine of the first client
         """
         
         client = socket.create_connection(('localhost', 12480))
         client.send(b"Msg du client 1 !\3")
-        print(f"2 -> 1 : {client.recv(1024)}")
+        print(f"1 -> 1 : {client.recv(1024)}")
+        # print(f"2 -> 1 : {client.recv(1024)}")
+        client.close()
         
     def run_client2():
         """
-        Routine d'exécution du deuxième 
+        Execution routine of the second client
+        """
+        
+        client = socket.create_connection(('localhost', 12480))
+        print(f"1 -> 2 : {client.recv(1024)}")
+        client.send(b"Msg du client 2 !\3")
+        print(f"2 -> 2 : {client.recv(1024)}")
+        client.close()
+        
     client1_thread = Thread(target=run_client1)
     client2_thread = Thread(target=run_client2)
     client1_thread.start()
@@ -207,15 +203,13 @@ if __name__ == "__main__":
     
     
     service.turn_messages()
-    print(f"1 -> 1 : {client1.recv(1024)}")
+    time.sleep(.1)
     service.turn_messages()
-    print(f"2 -> 1 : {client1.recv(1024)}")
-    
-    client1.close()
+    time.sleep(.1)
+    service.turn_messages()
 
-    service.accept_new_conn()
-    client2_alive = False
     client2_thread.join()
+    client1_thread.join()
     
     
     
